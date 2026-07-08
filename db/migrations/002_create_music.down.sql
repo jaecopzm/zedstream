@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS album_collaborators;
+DROP TABLE IF EXISTS track_collaborators;
+DROP TABLE IF EXISTS tracks;
+DROP TABLE IF EXISTS albums;
+DROP TABLE IF EXISTS artists;
+DROP TABLE IF EXISTS genres;
+DROP TYPE IF EXISTS album_status;
+DROP TYPE IF EXISTS album_type;
+DROP TYPE IF EXISTS track_status;
