@@ -5,5 +5,5 @@ coverage.out
 coverage.html
 *.test
 *.out
-api
-importer
+/api
+/importer
