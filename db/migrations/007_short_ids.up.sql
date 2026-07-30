@@ -1,0 +1,113 @@
+-- Migrate all UUID primary/foreign keys to TEXT with NanoID (12-char base62)
+-- Must drop FK constraints first, alter columns, then recreate FKs.
+
+-- Step 1: Drop all foreign key constraints
+ALTER TABLE album_collaborators DROP CONSTRAINT IF EXISTS album_collaborators_album_id_fkey;
+ALTER TABLE album_collaborators DROP CONSTRAINT IF EXISTS album_collaborators_artist_id_fkey;
+ALTER TABLE albums            DROP CONSTRAINT IF EXISTS albums_artist_id_fkey;
+ALTER TABLE artist_claims     DROP CONSTRAINT IF EXISTS artist_claims_artist_id_fkey;
+ALTER TABLE artist_claims     DROP CONSTRAINT IF EXISTS artist_claims_reviewed_by_fkey;
+ALTER TABLE artist_claims     DROP CONSTRAINT IF EXISTS artist_claims_user_id_fkey;
+ALTER TABLE artists           DROP CONSTRAINT IF EXISTS artists_user_id_fkey;
+ALTER TABLE follows           DROP CONSTRAINT IF EXISTS follows_artist_id_fkey;
+ALTER TABLE follows           DROP CONSTRAINT IF EXISTS follows_follower_id_fkey;
+ALTER TABLE likes             DROP CONSTRAINT IF EXISTS likes_track_id_fkey;
+ALTER TABLE likes             DROP CONSTRAINT IF EXISTS likes_user_id_fkey;
+ALTER TABLE message_recipients DROP CONSTRAINT IF EXISTS message_recipients_message_id_fkey;
+ALTER TABLE message_recipients DROP CONSTRAINT IF EXISTS message_recipients_user_id_fkey;
+ALTER TABLE messages           DROP CONSTRAINT IF EXISTS messages_artist_id_fkey;
+ALTER TABLE play_events        DROP CONSTRAINT IF EXISTS play_events_track_id_fkey;
+ALTER TABLE play_events        DROP CONSTRAINT IF EXISTS play_events_user_id_fkey;
+ALTER TABLE playlist_tracks    DROP CONSTRAINT IF EXISTS playlist_tracks_playlist_id_fkey;
+ALTER TABLE playlist_tracks    DROP CONSTRAINT IF EXISTS playlist_tracks_track_id_fkey;
+ALTER TABLE playlists          DROP CONSTRAINT IF EXISTS playlists_user_id_fkey;
+ALTER TABLE refresh_tokens     DROP CONSTRAINT IF EXISTS refresh_tokens_user_id_fkey;
+ALTER TABLE track_collaborators DROP CONSTRAINT IF EXISTS track_collaborators_artist_id_fkey;
+ALTER TABLE track_collaborators DROP CONSTRAINT IF EXISTS track_collaborators_track_id_fkey;
+ALTER TABLE track_comments     DROP CONSTRAINT IF EXISTS track_comments_track_id_fkey;
+ALTER TABLE track_comments     DROP CONSTRAINT IF EXISTS track_comments_user_id_fkey;
+ALTER TABLE tracks             DROP CONSTRAINT IF EXISTS tracks_album_id_fkey;
+ALTER TABLE tracks             DROP CONSTRAINT IF EXISTS tracks_artist_id_fkey;
+ALTER TABLE tracks             DROP CONSTRAINT IF EXISTS tracks_genre_id_fkey;
+
+-- Step 2: Drop default values on PK columns
+ALTER TABLE albums             ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE artist_claims      ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE artists            ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE genres             ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE messages           ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE play_events        ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE playlists          ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE refresh_tokens     ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE track_comments     ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE tracks             ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE users              ALTER COLUMN id DROP DEFAULT;
+
+-- Step 3: Alter all UUID columns to TEXT
+ALTER TABLE users               ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE refresh_tokens      ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE refresh_tokens      ALTER COLUMN user_id     TYPE TEXT;
+ALTER TABLE genres              ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE artists             ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE artists             ALTER COLUMN user_id     TYPE TEXT;
+ALTER TABLE albums              ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE albums              ALTER COLUMN artist_id   TYPE TEXT;
+ALTER TABLE tracks              ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE tracks              ALTER COLUMN artist_id   TYPE TEXT;
+ALTER TABLE tracks              ALTER COLUMN album_id    TYPE TEXT;
+ALTER TABLE tracks              ALTER COLUMN genre_id    TYPE TEXT;
+ALTER TABLE track_collaborators ALTER COLUMN track_id    TYPE TEXT;
+ALTER TABLE track_collaborators ALTER COLUMN artist_id   TYPE TEXT;
+ALTER TABLE album_collaborators ALTER COLUMN album_id    TYPE TEXT;
+ALTER TABLE album_collaborators ALTER COLUMN artist_id   TYPE TEXT;
+ALTER TABLE play_events         ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE play_events         ALTER COLUMN user_id     TYPE TEXT;
+ALTER TABLE play_events         ALTER COLUMN track_id    TYPE TEXT;
+ALTER TABLE follows             ALTER COLUMN follower_id TYPE TEXT;
+ALTER TABLE follows             ALTER COLUMN artist_id   TYPE TEXT;
+ALTER TABLE likes               ALTER COLUMN user_id     TYPE TEXT;
+ALTER TABLE likes               ALTER COLUMN track_id    TYPE TEXT;
+ALTER TABLE playlists           ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE playlists           ALTER COLUMN user_id     TYPE TEXT;
+ALTER TABLE playlist_tracks     ALTER COLUMN playlist_id TYPE TEXT;
+ALTER TABLE playlist_tracks     ALTER COLUMN track_id    TYPE TEXT;
+ALTER TABLE track_comments      ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE track_comments      ALTER COLUMN user_id     TYPE TEXT;
+ALTER TABLE track_comments      ALTER COLUMN track_id    TYPE TEXT;
+ALTER TABLE messages            ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE messages            ALTER COLUMN artist_id   TYPE TEXT;
+ALTER TABLE message_recipients  ALTER COLUMN message_id  TYPE TEXT;
+ALTER TABLE message_recipients  ALTER COLUMN user_id     TYPE TEXT;
+ALTER TABLE artist_claims       ALTER COLUMN id          TYPE TEXT;
+ALTER TABLE artist_claims       ALTER COLUMN artist_id   TYPE TEXT;
+ALTER TABLE artist_claims       ALTER COLUMN user_id     TYPE TEXT;
+ALTER TABLE artist_claims       ALTER COLUMN reviewed_by TYPE TEXT;
+
+-- Step 4: Recreate all foreign key constraints
+ALTER TABLE refresh_tokens      ADD CONSTRAINT refresh_tokens_user_id_fkey      FOREIGN KEY (user_id)     REFERENCES users(id)   ON DELETE CASCADE;
+ALTER TABLE artists             ADD CONSTRAINT artists_user_id_fkey              FOREIGN KEY (user_id)     REFERENCES users(id)   ON DELETE CASCADE;
+ALTER TABLE albums              ADD CONSTRAINT albums_artist_id_fkey             FOREIGN KEY (artist_id)   REFERENCES artists(id) ON DELETE CASCADE;
+ALTER TABLE tracks              ADD CONSTRAINT tracks_artist_id_fkey             FOREIGN KEY (artist_id)   REFERENCES artists(id) ON DELETE CASCADE;
+ALTER TABLE tracks              ADD CONSTRAINT tracks_album_id_fkey              FOREIGN KEY (album_id)    REFERENCES albums(id)  ON DELETE SET NULL;
+ALTER TABLE tracks              ADD CONSTRAINT tracks_genre_id_fkey              FOREIGN KEY (genre_id)    REFERENCES genres(id)  ON DELETE SET NULL;
+ALTER TABLE track_collaborators ADD CONSTRAINT track_collaborators_track_id_fkey  FOREIGN KEY (track_id)   REFERENCES tracks(id)  ON DELETE CASCADE;
+ALTER TABLE track_collaborators ADD CONSTRAINT track_collaborators_artist_id_fkey FOREIGN KEY (artist_id)  REFERENCES artists(id) ON DELETE CASCADE;
+ALTER TABLE album_collaborators ADD CONSTRAINT album_collaborators_album_id_fkey  FOREIGN KEY (album_id)   REFERENCES albums(id)  ON DELETE CASCADE;
+ALTER TABLE album_collaborators ADD CONSTRAINT album_collaborators_artist_id_fkey FOREIGN KEY (artist_id)  REFERENCES artists(id) ON DELETE CASCADE;
+ALTER TABLE play_events         ADD CONSTRAINT play_events_user_id_fkey           FOREIGN KEY (user_id)    REFERENCES users(id)   ON DELETE CASCADE;
+ALTER TABLE play_events         ADD CONSTRAINT play_events_track_id_fkey          FOREIGN KEY (track_id)   REFERENCES tracks(id)  ON DELETE CASCADE;
+ALTER TABLE follows             ADD CONSTRAINT follows_follower_id_fkey           FOREIGN KEY (follower_id) REFERENCES users(id)   ON DELETE CASCADE;
+ALTER TABLE follows             ADD CONSTRAINT follows_artist_id_fkey             FOREIGN KEY (artist_id)   REFERENCES artists(id) ON DELETE CASCADE;
+ALTER TABLE likes               ADD CONSTRAINT likes_user_id_fkey                 FOREIGN KEY (user_id)     REFERENCES users(id)   ON DELETE CASCADE;
+ALTER TABLE likes               ADD CONSTRAINT likes_track_id_fkey                FOREIGN KEY (track_id)    REFERENCES tracks(id)  ON DELETE CASCADE;
+ALTER TABLE playlists           ADD CONSTRAINT playlists_user_id_fkey             FOREIGN KEY (user_id)     REFERENCES users(id)   ON DELETE CASCADE;
+ALTER TABLE playlist_tracks     ADD CONSTRAINT playlist_tracks_playlist_id_fkey   FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE;
+ALTER TABLE playlist_tracks     ADD CONSTRAINT playlist_tracks_track_id_fkey      FOREIGN KEY (track_id)    REFERENCES tracks(id)  ON DELETE CASCADE;
+ALTER TABLE track_comments      ADD CONSTRAINT track_comments_user_id_fkey        FOREIGN KEY (user_id)     REFERENCES users(id)   ON DELETE CASCADE;
+ALTER TABLE track_comments      ADD CONSTRAINT track_comments_track_id_fkey       FOREIGN KEY (track_id)    REFERENCES tracks(id)  ON DELETE CASCADE;
+ALTER TABLE messages            ADD CONSTRAINT messages_artist_id_fkey            FOREIGN KEY (artist_id)   REFERENCES artists(id) ON DELETE CASCADE;
+ALTER TABLE message_recipients  ADD CONSTRAINT message_recipients_message_id_fkey FOREIGN KEY (message_id)  REFERENCES messages(id) ON DELETE CASCADE;
+ALTER TABLE message_recipients  ADD CONSTRAINT message_recipients_user_id_fkey    FOREIGN KEY (user_id)     REFERENCES users(id)   ON DELETE CASCADE;
+ALTER TABLE artist_claims       ADD CONSTRAINT artist_claims_artist_id_fkey       FOREIGN KEY (artist_id)   REFERENCES artists(id) ON DELETE CASCADE;
+ALTER TABLE artist_claims       ADD CONSTRAINT artist_claims_user_id_fkey         FOREIGN KEY (user_id)     REFERENCES users(id)   ON DELETE CASCADE;
+ALTER TABLE artist_claims       ADD CONSTRAINT artist_claims_reviewed_by_fkey     FOREIGN KEY (reviewed_by) REFERENCES users(id)   ON DELETE SET NULL;

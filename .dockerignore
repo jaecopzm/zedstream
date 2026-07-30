@@ -1,0 +1,7 @@
+.git
+.env
+web
+node_modules
+bin
+importer
+*.md

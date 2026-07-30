@@ -1,0 +1,9 @@
+.env
+bin/
+docs/
+coverage.out
+coverage.html
+*.test
+*.out
+api
+importer

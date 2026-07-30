@@ -1,0 +1,3 @@
+ALTER TABLE artists DROP COLUMN IF EXISTS cover_url;
+ALTER TABLE artists DROP COLUMN IF EXISTS location;
+ALTER TABLE artists DROP COLUMN IF EXISTS genre_tags;

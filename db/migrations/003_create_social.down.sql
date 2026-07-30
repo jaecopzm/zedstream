@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS message_recipients;
+DROP TABLE IF EXISTS messages;
+DROP TABLE IF EXISTS track_comments;
+DROP TABLE IF EXISTS playlist_tracks;
+DROP TABLE IF EXISTS playlists;
+DROP TABLE IF EXISTS likes;
+DROP TABLE IF EXISTS follows;
+DROP TABLE IF EXISTS play_events;
