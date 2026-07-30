@@ -100,6 +100,28 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	response.Created(w, a)
 }
 
+// CheckName checks if a stage name is available.
+//
+// @Summary     Check stage name availability
+// @Tags        artists
+// @Param       name query string true "Stage name to check"
+// @Router      /artists/check-name [get]
+func (h *Handler) CheckName(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		response.BadRequest(w, "name parameter is required")
+		return
+	}
+
+	taken, err := h.repo.IsStageNameTaken(r.Context(), name)
+	if err != nil {
+		response.InternalServerError(w, "failed to check name")
+		return
+	}
+
+	response.OK(w, map[string]bool{"available": !taken})
+}
+
 // GetMe returns the authenticated artist's profile.
 //
 // @Summary     Get my artist profile

@@ -241,6 +241,7 @@ func main() {
 		r.Get("/tracks", musicHandler.ListTracks)
 		r.Get("/tracks/search", musicHandler.SearchTracks)
 		r.Get("/albums/search", musicHandler.SearchAlbums)
+		r.Get("/artists/check-name", artistHandler.CheckName)
 		r.Get("/artists/search", artistHandler.Search)
 		r.Get("/genres", musicHandler.ListGenres)
 

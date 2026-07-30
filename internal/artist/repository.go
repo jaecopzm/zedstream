@@ -108,6 +108,18 @@ func (r *Repository) GetByUserID(ctx context.Context, userID string) (*Artist, e
 	return a, nil
 }
 
+// IsStageNameTaken checks whether a stage name is already in use (case-insensitive).
+func (r *Repository) IsStageNameTaken(ctx context.Context, name string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM artists WHERE LOWER(stage_name) = LOWER($1))`, name,
+	).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check stage name: %w", err)
+	}
+	return exists, nil
+}
+
 // UpdateProfile updates an artist's profile fields.
 func (r *Repository) UpdateProfile(ctx context.Context, artistID string, stageName, bio string, photoURL *string, socialLinks map[string]any, coverURL *string, location string, genreTags []string) (*Artist, error) {
 	if socialLinks == nil {
