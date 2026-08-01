@@ -239,6 +239,7 @@ func main() {
 
 		// Public music browsing
 		r.Get("/tracks", musicHandler.ListTracks)
+		r.Get("/sitemap", musicHandler.ListSitemap)
 		r.Get("/tracks/search", musicHandler.SearchTracks)
 		r.Get("/albums/search", musicHandler.SearchAlbums)
 		r.Get("/artists/check-name", artistHandler.CheckName)

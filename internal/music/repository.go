@@ -857,3 +857,44 @@ func scanTracks(rows interface {
 	}
 	return tracks, nil
 }
+
+// SitemapEntry is a minimal record for sitemap generation.
+type SitemapEntry struct {
+	ID        string    `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ListSitemapURLs returns lightweight id/timestamp lists for published tracks, albums, and artists.
+// Kept intentionally minimal and indexed so crawler sitemap generation stays fast.
+func (r *Repository) ListSitemapURLs(ctx context.Context) (tracks []SitemapEntry, albums []SitemapEntry, artists []SitemapEntry, err error) {
+	tracks, err = r.querySitemap(ctx, `SELECT id, updated_at FROM tracks WHERE status = 'published' ORDER BY updated_at DESC`)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("sitemap tracks: %w", err)
+	}
+	albums, err = r.querySitemap(ctx, `SELECT id, updated_at FROM albums WHERE status = 'published' ORDER BY updated_at DESC`)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("sitemap albums: %w", err)
+	}
+	artists, err = r.querySitemap(ctx, `SELECT id, updated_at FROM artists ORDER BY updated_at DESC`)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("sitemap artists: %w", err)
+	}
+	return tracks, albums, artists, nil
+}
+
+func (r *Repository) querySitemap(ctx context.Context, query string) ([]SitemapEntry, error) {
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SitemapEntry
+	for rows.Next() {
+		var e SitemapEntry
+		if err := rows.Scan(&e.ID, &e.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}

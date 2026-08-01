@@ -763,6 +763,21 @@ func (h *Handler) ListAlbums(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, map[string]any{"albums": albums})
 }
 
+// ListSitemap returns lightweight ID/timestamp lists for published tracks, albums, and artists.
+// Used by the frontend sitemap generator to keep crawl data fast.
+func (h *Handler) ListSitemap(w http.ResponseWriter, r *http.Request) {
+	tracks, albums, artists, err := h.repo.ListSitemapURLs(r.Context())
+	if err != nil {
+		response.InternalServerError(w, "failed to fetch sitemap data")
+		return
+	}
+	response.OK(w, map[string]any{
+		"tracks":  tracks,
+		"albums":  albums,
+		"artists": artists,
+	})
+}
+
 // SearchAlbums searches published albums by title, artist name, or collaborator.
 func (h *Handler) SearchAlbums(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
