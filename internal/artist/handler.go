@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -259,7 +260,14 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 // ListFeatured returns top artists by follower count for the home page.
 func (h *Handler) ListFeatured(w http.ResponseWriter, r *http.Request) {
-	artists, err := h.repo.ListFeatured(r.Context(), 10)
+	limit := 10
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
+		limit = l
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	artists, err := h.repo.ListFeatured(r.Context(), limit)
 	if err != nil {
 		response.InternalServerError(w, "failed to fetch featured artists")
 		return

@@ -639,8 +639,11 @@ func (h *Handler) ListTracks(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	section := r.URL.Query().Get("section")
-	if limit <= 0 || limit > 100 {
+	if limit <= 0 {
 		limit = 20
+	}
+	if limit > 500 {
+		limit = 500
 	}
 
 	tracks, err := h.repo.ListPublishedTracks(r.Context(), limit, offset, section)
@@ -740,8 +743,11 @@ func (h *Handler) GetTracksByGenre(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListAlbums(w http.ResponseWriter, r *http.Request) {
 	limit := 20
 	offset := 0
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 50 {
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
 		limit = l
+	}
+	if limit > 500 {
+		limit = 500
 	}
 	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && o >= 0 {
 		offset = o
