@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -37,10 +38,10 @@ type openAIMessage struct {
 }
 
 type openAIRequest struct {
-	Model       string           `json:"model"`
-	Messages    []openAIMessage  `json:"messages"`
-	Temperature float64          `json:"temperature"`
-	MaxTokens   int              `json:"max_tokens"`
+	Model       string          `json:"model"`
+	Messages    []openAIMessage `json:"messages"`
+	Temperature float64         `json:"temperature"`
+	MaxTokens   int             `json:"max_tokens"`
 }
 
 type openAIResponse struct {
@@ -51,29 +52,121 @@ type openAIResponse struct {
 	} `json:"choices"`
 }
 
-func getAIEnv() (apiKey, apiURL, model string) {
-	apiKey = os.Getenv("AI_API_KEY")
-	if apiKey == "" {
-		apiKey = os.Getenv("GROQ_API_KEY")
+func callGemini(apiKey, systemPrompt, userPrompt string) (string, error) {
+	model := os.Getenv("GEMINI_MODEL")
+	if model == "" {
+		model = "gemini-2.5-flash"
 	}
-	apiURL = os.Getenv("AI_API_URL")
-	model = os.Getenv("AI_MODEL")
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
+
+	combinedPrompt := systemPrompt + "\n\n" + userPrompt
+	payload := map[string]any{
+		"contents": []map[string]any{
+			{
+				"parts": []map[string]any{
+					{"text": combinedPrompt},
+				},
+			},
+		},
+		"generationConfig": map[string]any{
+			"temperature":      0.4,
+			"maxOutputTokens":  2000,
+			"responseMimeType": "application/json",
+		},
+	}
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 45 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("gemini api error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var res struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal(body, &res); err != nil {
+		return "", err
+	}
+	if len(res.Candidates) == 0 || len(res.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("gemini returned no content")
+	}
+	return res.Candidates[0].Content.Parts[0].Text, nil
+}
+
+func callGroq(apiKey, apiURL, model, systemPrompt, userPrompt string) (string, error) {
 	if apiURL == "" {
 		apiURL = "https://api.groq.com/openai/v1"
 	}
 	if model == "" {
 		model = "llama-3.3-70b-versatile"
 	}
-	return
+
+	body := openAIRequest{
+		Model:       model,
+		Temperature: 0.4,
+		MaxTokens:   2000,
+		Messages: []openAIMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+	}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", apiURL+"/chat/completions", bytes.NewReader(jsonBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 45 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("groq api error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var openAIResp openAIResponse
+	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
+		return "", err
+	}
+	if len(openAIResp.Choices) == 0 {
+		return "", fmt.Errorf("groq returned no choices")
+	}
+	return openAIResp.Choices[0].Message.Content, nil
 }
 
 func (h *Handler) AIEnrich(w http.ResponseWriter, r *http.Request) {
-	apiKey, apiURL, model := getAIEnv()
-	if apiKey == "" {
-		http.Error(w, `{"error":"AI_API_KEY or GROQ_API_KEY not configured"}`, http.StatusServiceUnavailable)
-		return
-	}
-
 	var req AIEnrichmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
@@ -93,71 +186,67 @@ func (h *Handler) AIEnrich(w http.ResponseWriter, r *http.Request) {
 		trackLines[i] = line
 	}
 
-	systemPrompt := `You are a music SEO specialist and genre expert for Zambian music. 
-For each track provided, generate:
-1. A compelling 1-2 sentence SEO description that would appear in search results and meta tags.
-2. The most appropriate genre label (e.g. "Zambian Hip Hop", "Kalindula", "Zambian Afrobeats", "Zambian Gospel", "Zambian R&B", "Zambian Dancehall", "Zambian Pop", "Reggae", "Dancehall", "Amapiano", "Zed Oldies").
+	systemPrompt := `You are an expert Zambian music curator, cultural critic, and SEO copywriter for ZedBeatz. 
+Your goal is to write vibrant, engaging, highly descriptive, and punchy SEO descriptions (2-3 sentences) that capture the true vibe, rhythm, storytelling, and cultural resonance of the track. Avoid generic boilerplate like "This is a great song by artist". Instead, highlight the groove, instrumentation, lyrical themes, and why music lovers should stream it.
+
+For each track, also determine the most appropriate Zambian or African music genre from this list (or close variant):
+- Zambian Hip Hop
+- Kalindula
+- Zambian Afrobeats
+- Zambian Gospel
+- Zambian R&B
+- Zambian Dancehall
+- Zambian Pop
+- Amapiano
+- Reggae
+- Zed Oldies
 
 Return ONLY valid JSON with this exact structure (no markdown, no backticks):
 {"results":[{"index":0,"description":"...","genre":"..."}]}`
 
-	userPrompt := "Generate SEO descriptions and genre suggestions for these tracks:\n" + strings.Join(trackLines, "\n")
+	userPrompt := "Generate rich SEO descriptions and accurate genre suggestions for these tracks:\n" + strings.Join(trackLines, "\n")
 
-	body := openAIRequest{
-		Model:       model,
-		Temperature: 0.3,
-		MaxTokens:   2000,
-		Messages: []openAIMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
+	var rawContent string
+	var lastErr error
+
+	// 1. Try Gemini first if GEMINI_API_KEY is available
+	geminiKey := os.Getenv("GEMINI_API_KEY")
+	if geminiKey == "" && strings.HasPrefix(os.Getenv("AI_PROVIDER"), "gemini") {
+		geminiKey = os.Getenv("AI_API_KEY")
+	}
+	if geminiKey != "" {
+		content, err := callGemini(geminiKey, systemPrompt, userPrompt)
+		if err == nil {
+			rawContent = content
+		} else {
+			lastErr = err
+			log.Printf("  ⚠ Gemini enrich failed, falling back to Groq: %v", err)
+		}
 	}
 
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"marshal: %s"}`, err.Error()), http.StatusInternalServerError)
-		return
+	// 2. Fall back to Groq / OpenAI compatible API if Gemini wasn't used or failed
+	if rawContent == "" {
+		groqKey := os.Getenv("GROQ_API_KEY")
+		if groqKey == "" {
+			groqKey = os.Getenv("AI_API_KEY")
+		}
+		if groqKey == "" {
+			if lastErr != nil {
+				http.Error(w, fmt.Sprintf(`{"error":"AI enrichment failed (Gemini: %s, Groq API key not configured)"}`, lastErr.Error()), http.StatusServiceUnavailable)
+			} else {
+				http.Error(w, `{"error":"GEMINI_API_KEY or GROQ_API_KEY not configured"}`, http.StatusServiceUnavailable)
+			}
+			return
+		}
+		content, err := callGroq(groqKey, os.Getenv("AI_API_URL"), os.Getenv("AI_MODEL"), systemPrompt, userPrompt)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"AI enrichment failed: %s"}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		rawContent = content
 	}
 
-	httpReq, err := http.NewRequest("POST", apiURL+"/chat/completions", bytes.NewReader(jsonBody))
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"create request: %s"}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	httpResp, err := client.Do(httpReq)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"AI request failed: %s"}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-	defer httpResp.Body.Close()
-
-	respBody, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"read response: %s"}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	if httpResp.StatusCode != 200 {
-		http.Error(w, fmt.Sprintf(`{"error":"AI API error (status %d): %s"}`, httpResp.StatusCode, string(respBody)), http.StatusInternalServerError)
-		return
-	}
-
-	var openAIResp openAIResponse
-	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"parse AI response: %s"}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	if len(openAIResp.Choices) == 0 {
-		http.Error(w, `{"error":"AI returned no choices"}`, http.StatusInternalServerError)
-		return
-	}
-
-	content := strings.TrimSpace(openAIResp.Choices[0].Message.Content)
+	content := strings.TrimSpace(rawContent)
 	content = strings.TrimPrefix(content, "```json")
 	content = strings.TrimPrefix(content, "```")
 	content = strings.TrimSuffix(content, "```")
@@ -165,7 +254,7 @@ Return ONLY valid JSON with this exact structure (no markdown, no backticks):
 
 	var enrichmentResp AIEnrichmentResponse
 	if err := json.Unmarshal([]byte(content), &enrichmentResp); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"parse enrichment JSON: %s"}`, err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf(`{"error":"parse enrichment JSON: %s (raw: %s)"}`, err.Error(), content), http.StatusInternalServerError)
 		return
 	}
 
