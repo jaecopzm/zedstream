@@ -17,12 +17,12 @@ func NewHandler(imp *Importer) *Handler {
 }
 
 type importTrackRequest struct {
-	URL             string  `json:"url"`
-	Search          string  `json:"search"`
-	GenreID         *string `json:"genre_id"`
-	OverrideArtist  string  `json:"override_artist"`
-	OverrideTitle   string  `json:"override_title"`
-	Description     string  `json:"description"`
+	URL            string  `json:"url"`
+	Search         string  `json:"search"`
+	GenreID        *string `json:"genre_id"`
+	OverrideArtist string  `json:"override_artist"`
+	OverrideTitle  string  `json:"override_title"`
+	Description    string  `json:"description"`
 }
 
 type importURLRequest struct {
@@ -116,6 +116,39 @@ type SearchResultTrack struct {
 	CoverURL     string   `json:"cover_url"`
 }
 
+func (h *Handler) toSearchResultTrack(t SpotifyTrack) SearchResultTrack {
+	artists := make([]string, 0, len(t.Artists))
+	artistIDs := make([]string, 0, len(t.Artists))
+	for _, a := range t.Artists {
+		artists = append(artists, a.Name)
+		artistIDs = append(artistIDs, a.ID)
+	}
+	coverURL := ""
+	if len(t.Album.Images) > 0 {
+		coverURL = t.Album.Images[0].URL
+	}
+
+	// Fetch artist genres from Spotify (primary artist only)
+	var artistGenres []string
+	if len(t.Artists) > 0 {
+		if artist, err := h.importer.spotify.FetchArtist(t.Artists[0].ID); err == nil {
+			artistGenres = artist.Genres
+		}
+	}
+
+	return SearchResultTrack{
+		SpotifyID:    t.ID,
+		Title:        t.Name,
+		Artists:      artists,
+		ArtistIDs:    artistIDs,
+		ArtistGenres: artistGenres,
+		ISRC:         t.ExternalIDs.ISRC,
+		DurationMs:   t.DurationMs,
+		AlbumName:    t.Album.Name,
+		CoverURL:     coverURL,
+	}
+}
+
 func (h *Handler) SearchTracks(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	if q == "" {
@@ -129,38 +162,31 @@ func (h *Handler) SearchTracks(w http.ResponseWriter, r *http.Request) {
 	}
 	result := make([]SearchResultTrack, 0, len(tracks))
 	for _, t := range tracks {
-		artists := make([]string, 0, len(t.Artists))
-		artistIDs := make([]string, 0, len(t.Artists))
-		for _, a := range t.Artists {
-			artists = append(artists, a.Name)
-			artistIDs = append(artistIDs, a.ID)
-		}
-		coverURL := ""
-		if len(t.Album.Images) > 0 {
-			coverURL = t.Album.Images[0].URL
-		}
-
-		// Fetch artist genres from Spotify (primary artist only)
-		var artistGenres []string
-		if len(t.Artists) > 0 {
-			if artist, err := h.importer.spotify.FetchArtist(t.Artists[0].ID); err == nil {
-				artistGenres = artist.Genres
-			}
-		}
-
-		result = append(result, SearchResultTrack{
-			SpotifyID:    t.ID,
-			Title:        t.Name,
-			Artists:      artists,
-			ArtistIDs:    artistIDs,
-			ArtistGenres: artistGenres,
-			ISRC:         t.ExternalIDs.ISRC,
-			DurationMs:   t.DurationMs,
-			AlbumName:    t.Album.Name,
-			CoverURL:     coverURL,
-		})
+		result = append(result, h.toSearchResultTrack(t))
 	}
 	response.OK(w, SearchTracksResponse{Tracks: result})
+}
+
+// LookupTrack resolves a Spotify track URL or bare track ID to a single
+// SearchResultTrack, so the import UI can add it directly by URL.
+// GET /admin/import/lookup?id=<url-or-id>
+func (h *Handler) LookupTrack(w http.ResponseWriter, r *http.Request) {
+	raw := r.URL.Query().Get("id")
+	if raw == "" {
+		response.BadRequest(w, "query parameter id is required")
+		return
+	}
+	id := extractSpotifyID(raw)
+	if !isSpotifyID(id) {
+		response.BadRequest(w, "invalid Spotify track URL or ID")
+		return
+	}
+	st, err := h.importer.spotify.FetchTrack(id)
+	if err != nil {
+		response.InternalServerError(w, err.Error())
+		return
+	}
+	response.OK(w, SearchTracksResponse{Tracks: []SearchResultTrack{h.toSearchResultTrack(*st)}})
 }
 
 type BulkImportItem struct {

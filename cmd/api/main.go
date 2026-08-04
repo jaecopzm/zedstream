@@ -414,6 +414,7 @@ func main() {
 
 			// Spotify import (admin tools)
 			r.Get("/admin/import/search", importHandler.SearchTracks)
+			r.Get("/admin/import/lookup", importHandler.LookupTrack)
 			r.Post("/admin/import/track", importHandler.ImportTrack)
 			r.Post("/admin/import/bulk", importHandler.BulkImport)
 			r.Post("/admin/import/bulk/stream", importHandler.BulkImportStream)
