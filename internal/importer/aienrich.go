@@ -17,9 +17,10 @@ type AIEnrichmentRequest struct {
 }
 
 type AIEnrichmentTrack struct {
-	Title  string `json:"title"`
-	Artist string `json:"artist"`
-	Album  string `json:"album"`
+	Title  string   `json:"title"`
+	Artist string   `json:"artist"`
+	Album  string   `json:"album"`
+	Genres []string `json:"genres,omitempty"`
 }
 
 type AIEnrichmentResult struct {
@@ -183,23 +184,26 @@ func (h *Handler) AIEnrich(w http.ResponseWriter, r *http.Request) {
 		if t.Album != "" {
 			line += fmt.Sprintf(" (album: %s)", t.Album)
 		}
+		if len(t.Genres) > 0 {
+			line += fmt.Sprintf(" [Spotify artist genres: %s]", strings.Join(t.Genres, ", "))
+		}
 		trackLines[i] = line
 	}
 
 	systemPrompt := `You are an expert Zambian music curator, cultural critic, and SEO copywriter for ZedBeatz. 
 Your goal is to write vibrant, engaging, highly descriptive, and punchy SEO descriptions (2-3 sentences) that capture the true vibe, rhythm, storytelling, and cultural resonance of the track. Avoid generic boilerplate like "This is a great song by artist". Instead, highlight the groove, instrumentation, lyrical themes, and why music lovers should stream it.
 
-For each track, also determine the most appropriate Zambian or African music genre from this list (or close variant):
-- Zambian Hip Hop
+For each track, pick the genre that best matches from this EXACT list. Use the Spotify artist genres (if provided) as a strong hint — do not contradict them:
+- Afrobeats
+- Zambian Hip-Hop
 - Kalindula
-- Zambian Afrobeats
-- Zambian Gospel
-- Zambian R&B
-- Zambian Dancehall
-- Zambian Pop
-- Amapiano
+- Gospel
+- R&B
 - Reggae
-- Zed Oldies
+- Dancehall
+- Afro-Pop
+- Jazz
+- Traditional
 
 Return ONLY valid JSON with this exact structure (no markdown, no backticks):
 {"results":[{"index":0,"description":"...","genre":"..."}]}`
