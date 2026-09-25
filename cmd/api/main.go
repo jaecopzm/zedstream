@@ -36,6 +36,7 @@ import (
 	"github.com/jaecopzm/zedstream/internal/music"
 	"github.com/jaecopzm/zedstream/internal/radio"
 	"github.com/jaecopzm/zedstream/internal/recommendations"
+	"github.com/jaecopzm/zedstream/internal/resume"
 	"github.com/jaecopzm/zedstream/internal/scheduler"
 	"github.com/jaecopzm/zedstream/internal/social"
 	"github.com/jaecopzm/zedstream/internal/streaming"
@@ -141,6 +142,7 @@ func main() {
 	analyticsHandler  := analytics.NewHandler(db)
 	recoHandler       := recommendations.NewHandler(db)
 	radioHandler      := radio.NewHandler(db, store, cfg.R2BucketImages)
+	resumeHandler     := resume.NewHandler(db)
 
 	// Artist claim verification
 	claimRepo    := artistclaim.NewRepository(db)
@@ -333,6 +335,11 @@ func main() {
 			r.Get("/me/history", socialHandler.GetHistory)
 			r.Get("/me/messages", socialHandler.GetMyMessages)
 			r.Get("/me/recommendations", recoHandler.GetRecommendations)
+
+			// Resume points (Jump Back In)
+			r.Get("/me/resume", resumeHandler.List)
+			r.Put("/me/resume", resumeHandler.Put)
+			r.Delete("/me/resume/{trackId}", resumeHandler.Delete)
 
 			// Playlists without UUID (create)
 			r.Post("/playlists", socialHandler.CreatePlaylist)
