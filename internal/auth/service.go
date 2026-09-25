@@ -198,10 +198,10 @@ func (s *Service) RegisterWithEmail(ctx context.Context, email, password string)
 
 	var userID string
 	err = s.db.QueryRow(ctx,
-		`INSERT INTO users (email, name, role, provider, provider_id, password_hash)
-		 VALUES ($1, $1, 'listener', 'email', $1, $2)
+		`INSERT INTO users (id, email, name, role, provider, provider_id, password_hash)
+		 VALUES ($1, $2, $2, 'listener', 'email', $2, $3)
 		 RETURNING id`,
-		email, string(hash),
+		id.New(), email, string(hash),
 	).Scan(&userID)
 	if err != nil {
 		if isUniqueViolation(err) {

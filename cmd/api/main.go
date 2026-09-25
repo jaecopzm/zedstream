@@ -30,6 +30,7 @@ import (
 	"github.com/jaecopzm/zedstream/internal/artistclaim"
 	"github.com/jaecopzm/zedstream/internal/auth"
 	"github.com/jaecopzm/zedstream/internal/credits"
+	"github.com/jaecopzm/zedstream/internal/downloader"
 	"github.com/jaecopzm/zedstream/internal/importer"
 	"github.com/jaecopzm/zedstream/internal/payments"
 	"github.com/jaecopzm/zedstream/internal/music"
@@ -135,6 +136,7 @@ func main() {
 	musicRepo         := music.NewRepository(db)
 	musicHandler      := music.NewHandler(musicRepo, store, searchClient, cfg.R2BucketAudio, cfg.R2BucketImages, creditsRepo)
 	streamingHandler  := streaming.NewHandler(db, store, cfg.R2BucketAudio)
+	downloaderHandler := downloader.NewHandler(db, store, cfg.R2BucketAudio, cfg.R2BucketImages)
 	socialHandler     := social.NewHandler(db, cfg.BaseURL)
 	analyticsHandler  := analytics.NewHandler(db)
 	recoHandler       := recommendations.NewHandler(db)
@@ -272,6 +274,18 @@ func main() {
 
 		// Radio station detail — no UUID validation because genre stations use slug IDs
 		r.Get("/radio/stations/{id}", radioHandler.GetStation)
+
+		// ── Downloader (superfast MP3) - Flutter API ─────────────────────────
+		r.Group(func(r chi.Router) {
+			r.Use(appMiddleware.Authenticate(authSvc))
+			r.Post("/downloader/jobs", downloaderHandler.Create)
+			r.Get("/downloader/jobs", downloaderHandler.List)
+			r.Get("/downloader/jobs/{id}", downloaderHandler.Get)
+			r.Get("/downloader/jobs/{id}/stream", downloaderHandler.Stream)
+			r.Get("/downloader/jobs/{id}/events", downloaderHandler.Events)
+			r.Delete("/downloader/jobs/{id}", downloaderHandler.Delete)
+			r.Post("/downloader/jobs/{id}/retry", downloaderHandler.Retry)
+		})
 
 		// ── Authenticated routes ───────────────────────────────────────────────
 		r.Group(func(r chi.Router) {
