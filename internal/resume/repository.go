@@ -40,9 +40,10 @@ func (r *Repository) Upsert(ctx context.Context, userID, trackID string, positio
 func (r *Repository) List(ctx context.Context, userID string, limit int) ([]ResumePoint, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT r.track_id, r.position_sec, r.duration_sec, r.updated_at,
-		       t.title, t.artist_id, t.artist_name, t.cover_url
+		       t.title, t.artist_id, a.stage_name, t.cover_url
 		FROM resume_points r
 		JOIN tracks t ON t.id = r.track_id
+		LEFT JOIN artists a ON a.id = t.artist_id
 		WHERE r.user_id = $1
 		ORDER BY r.updated_at DESC
 		LIMIT $2`,
