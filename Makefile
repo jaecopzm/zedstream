@@ -56,24 +56,22 @@ lint:
 clean:
 	rm -rf bin/ coverage.out coverage.html docs/
 
-## Pull production DB dump and restore locally
+## Pull production DB data and refresh the local database (schema must already exist)
 db-pull:
-	ssh root@api.zedbeatz.com "/opt/zedstream/scripts/db-dump.sh /tmp/zedstream_dump.sql"
-	scp root@api.zedbeatz.com:/tmp/zedstream_dump.sql.gz /tmp/
-	gunzip -f /tmp/zedstream_dump.sql.gz
-	$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" drop -f 2>/dev/null; true
-	psql "$(DB_URL)" -f /tmp/zedstream_dump.sql
-	@echo "Local DB restored from production dump"
+	ssh vps2 'PGPASSFILE=~/.pgpass pg_dump -h 127.0.0.1 -U zedstream --data-only zedstream' > /tmp/zedstream_data.sql
+	psql "postgres://jaeycop@/zedstream?host=/var/run/postgresql&sslmode=disable" -c "TRUNCATE tracks, artists, albums, playlists, users, genres, likes, follows RESTART IDENTITY CASCADE;"
+	psql "postgres://jaeycop@/zedstream?host=/var/run/postgresql&sslmode=disable" -f /tmp/zedstream_data.sql
+	@echo "Local DB data refreshed from production"
 
-## Deploy: rsync code, rebuild, restart
+## Deploy: rsync code to vps2, rebuild, restart systemd service
 deploy:
-	rsync -avz --exclude='.git/' --exclude='web/' --exclude='node_modules/' --exclude='bin/' --exclude='.env' ./ root@api.zedbeatz.com:/opt/zedstream/
-	ssh root@api.zedbeatz.com "cd /opt/zedstream && docker compose up -d --build api"
-	@echo "Deployed"
+	rsync -avz --exclude='.git/' --exclude='web/' --exclude='node_modules/' --exclude='bin/' --exclude='.env' ./ vps2:/tmp/zedstream-deploy/
+	ssh vps2 "sudo cp -r /tmp/zedstream-deploy/. /opt/zedstream/ && sudo chown -R ubuntu:ubuntu /opt/zedstream && cd /opt/zedstream && go build -o /opt/zedstream/zedstream ./cmd/api && sudo systemctl restart zedstream-api.service"
+	@echo "Deployed to vps2"
 
-## Open SSH tunnel to deployed Postgres (local:15432 → server:5432)
+## Open SSH tunnel to production Postgres on vps2 (local:15432 → vps2:5432)
 tunnel:
-	fuser -k 15432/tcp 2>/dev/null; ssh -f -N -L 15432:127.0.0.1:5432 root@api.zedbeatz.com -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes && echo "Tunnel open on localhost:15432"
+	fuser -k 15432/tcp 2>/dev/null; ssh -f -N -L 15432:127.0.0.1:5432 vps2 -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes && echo "Tunnel open on localhost:15432"
 
 ## Kill the SSH tunnel
 tunnel-kill:
