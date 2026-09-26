@@ -192,7 +192,7 @@ func main() {
 		time.Duration(cfg.RateLimitWindowSeconds)*time.Second,
 	))
 	corsOpts := cors.Options{
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-Id"},
 		AllowCredentials: true,
 		MaxAge:           300,
