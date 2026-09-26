@@ -154,7 +154,7 @@ func callGroq(apiKey, apiURL, model, systemPrompt, userPrompt string) (string, e
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("groq api error (status %d): %s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("chat api error (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
 	var openAIResp openAIResponse
@@ -162,7 +162,7 @@ func callGroq(apiKey, apiURL, model, systemPrompt, userPrompt string) (string, e
 		return "", err
 	}
 	if len(openAIResp.Choices) == 0 {
-		return "", fmt.Errorf("groq returned no choices")
+		return "", fmt.Errorf("chat api returned no choices")
 	}
 	return openAIResp.Choices[0].Message.Content, nil
 }
@@ -211,7 +211,22 @@ Return ONLY valid JSON with this exact structure (no markdown, no backticks):
 	userPrompt := "Generate rich SEO descriptions and accurate genre suggestions for these tracks:\n" + strings.Join(trackLines, "\n")
 
 	var rawContent string
-	var lastErr error
+	var errs []string
+
+	// Provider chain: try each configured provider in order, fall through on failure.
+	// This rides out per-provider free-tier rate limits (the usual 500 source).
+	type openAIProvider struct {
+		name       string
+		keyEnv     string
+		urlEnv     string
+		urlDefault string
+		modelEnv   string
+		model      string
+	}
+	providers := []openAIProvider{
+		{name: "groq", keyEnv: "GROQ_API_KEY", urlEnv: "AI_API_URL", urlDefault: "https://api.groq.com/openai/v1", modelEnv: "AI_MODEL", model: "llama-3.3-70b-versatile"},
+		{name: "nvidia", keyEnv: "NVIDIA_API_KEY", urlEnv: "NVIDIA_API_URL", urlDefault: "https://integrate.api.nvidia.com/v1", modelEnv: "NVIDIA_MODEL", model: "meta/llama-3.3-70b-instruct"},
+	}
 
 	// 1. Try Gemini first if GEMINI_API_KEY is available
 	geminiKey := os.Getenv("GEMINI_API_KEY")
@@ -223,31 +238,46 @@ Return ONLY valid JSON with this exact structure (no markdown, no backticks):
 		if err == nil {
 			rawContent = content
 		} else {
-			lastErr = err
-			log.Printf("  ⚠ Gemini enrich failed, falling back to Groq: %v", err)
+			errs = append(errs, "gemini: "+err.Error())
+			log.Printf("  ⚠ Gemini enrich failed, falling back: %v", err)
 		}
 	}
 
-	// 2. Fall back to Groq / OpenAI compatible API if Gemini wasn't used or failed
+	// 2. Fall through OpenAI-compatible providers (Groq, NVIDIA, ...) until one works
 	if rawContent == "" {
-		groqKey := os.Getenv("GROQ_API_KEY")
-		if groqKey == "" {
-			groqKey = os.Getenv("AI_API_KEY")
-		}
-		if groqKey == "" {
-			if lastErr != nil {
-				http.Error(w, fmt.Sprintf(`{"error":"AI enrichment failed (Gemini: %s, Groq API key not configured)"}`, lastErr.Error()), http.StatusServiceUnavailable)
-			} else {
-				http.Error(w, `{"error":"GEMINI_API_KEY or GROQ_API_KEY not configured"}`, http.StatusServiceUnavailable)
+		for _, p := range providers {
+			key := os.Getenv(p.keyEnv)
+			if key == "" && p.name == "groq" {
+				key = os.Getenv("AI_API_KEY")
 			}
-			return
+			if key == "" {
+				continue
+			}
+			apiURL := os.Getenv(p.urlEnv)
+			if apiURL == "" {
+				apiURL = p.urlDefault
+			}
+			model := os.Getenv(p.modelEnv)
+			if model == "" {
+				model = p.model
+			}
+			content, err := callGroq(key, apiURL, model, systemPrompt, userPrompt)
+			if err == nil {
+				rawContent = content
+				break
+			}
+			errs = append(errs, p.name+": "+err.Error())
+			log.Printf("  ⚠ %s enrich failed, trying next provider: %v", p.name, err)
 		}
-		content, err := callGroq(groqKey, os.Getenv("AI_API_URL"), os.Getenv("AI_MODEL"), systemPrompt, userPrompt)
-		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":"AI enrichment failed: %s"}`, err.Error()), http.StatusInternalServerError)
-			return
+	}
+
+	if rawContent == "" {
+		if len(errs) == 0 {
+			http.Error(w, `{"error":"GEMINI_API_KEY, GROQ_API_KEY or NVIDIA_API_KEY not configured"}`, http.StatusServiceUnavailable)
+		} else {
+			http.Error(w, fmt.Sprintf(`{"error":"AI enrichment failed: %s"}`, strings.Join(errs, " | ")), http.StatusInternalServerError)
 		}
-		rawContent = content
+		return
 	}
 
 	content := strings.TrimSpace(rawContent)
