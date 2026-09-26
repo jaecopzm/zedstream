@@ -224,7 +224,7 @@ Return ONLY valid JSON with this exact structure (no markdown, no backticks):
 		model      string
 	}
 	providers := []openAIProvider{
-		{name: "groq", keyEnv: "GROQ_API_KEY", urlEnv: "AI_API_URL", urlDefault: "https://api.groq.com/openai/v1", modelEnv: "AI_MODEL", model: "llama-3.3-70b-versatile"},
+		{name: "groq", keyEnv: "GROQ_API_KEY", urlEnv: "AI_API_URL", urlDefault: "https://api.groq.com/openai/v1", modelEnv: "AI_MODEL", model: "openai/gpt-oss-20b"},
 		{name: "nvidia", keyEnv: "NVIDIA_API_KEY", urlEnv: "NVIDIA_API_URL", urlDefault: "https://integrate.api.nvidia.com/v1", modelEnv: "NVIDIA_MODEL", model: "nvidia/nemotron-3.5-lightning-30b-a3b"},
 	}
 
