@@ -27,6 +27,7 @@ import (
 	"github.com/jaecopzm/zedstream/internal/admin"
 	"github.com/jaecopzm/zedstream/internal/analytics"
 	"github.com/jaecopzm/zedstream/internal/artist"
+	"github.com/jaecopzm/zedstream/internal/blog"
 	"github.com/jaecopzm/zedstream/internal/artistclaim"
 	"github.com/jaecopzm/zedstream/internal/auth"
 	"github.com/jaecopzm/zedstream/internal/credits"
@@ -143,6 +144,7 @@ func main() {
 	recoHandler       := recommendations.NewHandler(db)
 	radioHandler      := radio.NewHandler(db, store, cfg.R2BucketImages)
 	resumeHandler     := resume.NewHandler(db)
+	blogHandler       := blog.NewHandler(db, store, cfg.R2BucketImages)
 
 	// Artist claim verification
 	claimRepo    := artistclaim.NewRepository(db)
@@ -253,6 +255,11 @@ func main() {
 		// Public albums listing (no id param)
 		r.Get("/albums", musicHandler.ListAlbums)
 		r.Get("/artists/featured", artistHandler.ListFeatured)
+
+		// Blog (public)
+		r.Get("/posts", blogHandler.ListPublished)
+		r.Get("/posts/sitemap", blogHandler.SitemapFeed)
+		r.Get("/posts/{slug}", blogHandler.GetBySlug)
 
 		// Radio (public)
 		r.Get("/radio/stations", radioHandler.ListStations)
@@ -431,6 +438,15 @@ func main() {
 			r.Group(func(r chi.Router) {
 				r.Use(appMiddleware.RequireValidID("id"))
 				r.Patch("/admin/tracks/{id}", adminHandler.UpdateTrack)
+			})
+
+			// Blog (admin review queue)
+			r.Get("/admin/posts", blogHandler.AdminList)
+			r.Post("/admin/posts", blogHandler.CreatePost)
+			r.Group(func(r chi.Router) {
+				r.Use(appMiddleware.RequireValidID("id"))
+				r.Patch("/admin/posts/{id}", blogHandler.UpdatePost)
+				r.Delete("/admin/posts/{id}", blogHandler.DeletePost)
 			})
 
 			// Spotify import (admin tools)
