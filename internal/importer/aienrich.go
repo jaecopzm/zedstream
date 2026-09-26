@@ -225,7 +225,7 @@ Return ONLY valid JSON with this exact structure (no markdown, no backticks):
 	}
 	providers := []openAIProvider{
 		{name: "groq", keyEnv: "GROQ_API_KEY", urlEnv: "AI_API_URL", urlDefault: "https://api.groq.com/openai/v1", modelEnv: "AI_MODEL", model: "llama-3.3-70b-versatile"},
-		{name: "nvidia", keyEnv: "NVIDIA_API_KEY", urlEnv: "NVIDIA_API_URL", urlDefault: "https://integrate.api.nvidia.com/v1", modelEnv: "NVIDIA_MODEL", model: "meta/llama-3.3-70b-instruct"},
+		{name: "nvidia", keyEnv: "NVIDIA_API_KEY", urlEnv: "NVIDIA_API_URL", urlDefault: "https://integrate.api.nvidia.com/v1", modelEnv: "NVIDIA_MODEL", model: "nvidia/nemotron-3.5-lightning-30b-a3b"},
 	}
 
 	// 1. Try Gemini first if GEMINI_API_KEY is available
@@ -285,6 +285,11 @@ Return ONLY valid JSON with this exact structure (no markdown, no backticks):
 	content = strings.TrimPrefix(content, "```")
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
+	// Some reasoning models (e.g. Nemotron) wrap the JSON in thinking text.
+	// Extract the outermost JSON object before parsing.
+	if i, j := strings.Index(content, "{"), strings.LastIndex(content, "}"); i >= 0 && j > i {
+		content = content[i : j+1]
+	}
 
 	var enrichmentResp AIEnrichmentResponse
 	if err := json.Unmarshal([]byte(content), &enrichmentResp); err != nil {
