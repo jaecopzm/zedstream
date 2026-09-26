@@ -24,6 +24,32 @@ func (s *Scheduler) Start(ctx context.Context) {
 	go s.runPublishScheduler(ctx)
 }
 
+// StartBlogAgent runs the blog draft agent once a day (first run ~1 min after
+// boot so a fresh deploy can be verified in the logs, then every 24h).
+// Drafts land in review status — publishing stays human-gated in /admin/blog.
+func (s *Scheduler) StartBlogAgent(ctx context.Context, run func(context.Context)) {
+	go func() {
+		first := time.NewTimer(1 * time.Minute)
+		defer first.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-first.C:
+			run(ctx)
+		}
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				run(ctx)
+			}
+		}
+	}()
+}
+
 // runPublishScheduler checks every minute for tracks/albums to publish.
 func (s *Scheduler) runPublishScheduler(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Minute)

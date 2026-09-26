@@ -176,6 +176,7 @@ func main() {
 	defer bgCancel()
 	sched := scheduler.New(db, logger)
 	sched.Start(bgCtx)
+	sched.StartBlogAgent(bgCtx, blogHandler.RunDailyAgent)
 
 	// ── Router ───────────────────────────────────────────────────────────────
 	r := chi.NewRouter()
@@ -443,6 +444,7 @@ func main() {
 			// Blog (admin review queue)
 			r.Get("/admin/posts", blogHandler.AdminList)
 			r.Post("/admin/posts", blogHandler.CreatePost)
+			r.Get("/admin/posts/{id}", blogHandler.AdminGet)
 			r.Group(func(r chi.Router) {
 				r.Use(appMiddleware.RequireValidID("id"))
 				r.Patch("/admin/posts/{id}", blogHandler.UpdatePost)
