@@ -489,12 +489,13 @@ func (h *Handler) ListTracks(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateTrackRequest struct {
-	Section *string `json:"section,omitempty"`
-	Status  *string `json:"status,omitempty"`
-	GenreID *string `json:"genre_id,omitempty"`
+	Section     *string `json:"section,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	GenreID     *string `json:"genre_id,omitempty"`
+	Description *string `json:"description,omitempty"`
 }
 
-// UpdateTrack updates track metadata (section, status, genre).
+// UpdateTrack updates track metadata (section, status, genre, description).
 func (h *Handler) UpdateTrack(w http.ResponseWriter, r *http.Request) {
 	trackID := chi.URLParam(r, "id")
 	if trackID == "" {
@@ -524,7 +525,7 @@ func (h *Handler) UpdateTrack(w http.ResponseWriter, r *http.Request) {
 		track.GenreID = req.GenreID
 	}
 
-	updated, err := h.musicRepo.UpdateTrack(r.Context(), trackID, track.Title, track.GenreID, track.Status, track.CoverURL, nil)
+	updated, err := h.musicRepo.UpdateTrack(r.Context(), trackID, track.Title, track.GenreID, track.Status, track.CoverURL, req.Description)
 	if err != nil {
 		response.InternalServerError(w, "failed to update track")
 		return
