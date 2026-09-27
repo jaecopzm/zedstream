@@ -266,11 +266,14 @@ func main() {
 		r.Get("/radio/stations", radioHandler.ListStations)
 		r.With(appMiddleware.TryAuthenticate(authSvc)).Get("/radio/personalized", radioHandler.GetPersonalized)
 
+		// Genre tracks accept an id or slug (slug resolution happens in the
+		// handler), so this route stays outside RequireValidID.
+		r.Get("/genres/{id}/tracks", musicHandler.GetTracksByGenre)
+
 		// Routes with UUID {id} params
 		r.Group(func(r chi.Router) {
 			r.Use(appMiddleware.RequireValidID("id"))
 
-			r.Get("/genres/{id}/tracks", musicHandler.GetTracksByGenre)
 			r.Get("/albums/{id}", musicHandler.GetAlbum)
 			r.Get("/tracks/{id}", musicHandler.GetTrack)
 			r.With(appMiddleware.TryAuthenticate(authSvc)).Get("/artists/{id}", artistHandler.GetByID)

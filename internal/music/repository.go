@@ -247,12 +247,18 @@ func (r *Repository) ListAllTracks(ctx context.Context, limit, offset int) ([]*T
 }
 
 // ListPublishedTracks returns published tracks with pagination.
-func (r *Repository) ListPublishedTracks(ctx context.Context, limit, offset int, section string) ([]*Track, error) {
+func (r *Repository) ListPublishedTracks(ctx context.Context, limit, offset int, section, order string) ([]*Track, error) {
 	var rows pgx.Rows
 	var err error
 
+	// Allowlisted ordering only — never interpolate raw user input.
+	orderBy := "t.play_count DESC, t.created_at DESC"
+	if order == "newest" {
+		orderBy = "t.created_at DESC"
+	}
+
 	if section != "" {
-		rows, err = r.db.Query(ctx, `
+		rows, err = r.db.Query(ctx, fmt.Sprintf(`
 			SELECT t.id, t.artist_id, t.album_id, t.title, t.duration_sec, t.genre_id, t.cover_url,
 			       t.audio_key, t.file_size, t.mime_type, t.status, t.scheduled_at, t.released_at,
 			       t.play_count, t.like_count, t.track_order, t.created_at, t.updated_at, t.hls_playlist_key, t.hls_status,
@@ -266,11 +272,11 @@ func (r *Repository) ListPublishedTracks(ctx context.Context, limit, offset int,
 			LEFT JOIN genres g ON g.id = t.genre_id
 			LEFT JOIN albums al ON al.id = t.album_id
 			WHERE t.status = 'published' AND t.section = $1
-			ORDER BY t.play_count DESC, t.created_at DESC
+			ORDER BY %s
 			LIMIT $2 OFFSET $3
-		`, section, limit, offset)
+		`, orderBy), section, limit, offset)
 	} else {
-		rows, err = r.db.Query(ctx, `
+		rows, err = r.db.Query(ctx, fmt.Sprintf(`
 			SELECT t.id, t.artist_id, t.album_id, t.title, t.duration_sec, t.genre_id, t.cover_url,
 			       t.audio_key, t.file_size, t.mime_type, t.status, t.scheduled_at, t.released_at,
 			       t.play_count, t.like_count, t.track_order, t.created_at, t.updated_at, t.hls_playlist_key, t.hls_status,
@@ -284,9 +290,9 @@ func (r *Repository) ListPublishedTracks(ctx context.Context, limit, offset int,
 			LEFT JOIN genres g ON g.id = t.genre_id
 			LEFT JOIN albums al ON al.id = t.album_id
 			WHERE t.status = 'published'
-			ORDER BY t.play_count DESC, t.created_at DESC
+			ORDER BY %s
 			LIMIT $1 OFFSET $2
-		`, limit, offset)
+		`, orderBy), limit, offset)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("list published tracks: %w", err)

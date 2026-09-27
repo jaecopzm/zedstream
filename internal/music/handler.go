@@ -639,6 +639,7 @@ func (h *Handler) ListTracks(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	section := r.URL.Query().Get("section")
+	order := r.URL.Query().Get("order")
 	if limit <= 0 {
 		limit = 20
 	}
@@ -646,7 +647,7 @@ func (h *Handler) ListTracks(w http.ResponseWriter, r *http.Request) {
 		limit = 500
 	}
 
-	tracks, err := h.repo.ListPublishedTracks(r.Context(), limit, offset, section)
+	tracks, err := h.repo.ListPublishedTracks(r.Context(), limit, offset, section, order)
 	if err != nil {
 		response.InternalServerError(w, "failed to fetch tracks")
 		return
@@ -722,6 +723,10 @@ func (h *Handler) ListGenres(w http.ResponseWriter, r *http.Request) {
 // @Router      /genres/{id}/tracks [get]
 func (h *Handler) GetTracksByGenre(w http.ResponseWriter, r *http.Request) {
 	genreID := chi.URLParam(r, "id")
+	// Accept slugs as well as IDs (old bookmarked URLs keep working).
+	if resolved := h.repo.ResolveGenre(r.Context(), genreID); resolved != nil {
+		genreID = *resolved
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	if limit <= 0 || limit > 100 {
