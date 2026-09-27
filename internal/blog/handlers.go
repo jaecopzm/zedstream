@@ -128,6 +128,23 @@ func (h *Handler) AdminList(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, map[string]any{"posts": posts})
 }
 
+// AdminGet returns one post by id regardless of status (editor loading).
+func (h *Handler) AdminGet(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		response.BadRequest(w, "post id is required")
+		return
+	}
+	p, err := scanPost(h.db.QueryRow(r.Context(),
+		`SELECT `+postColumns+` FROM posts WHERE id::text = $1`, id).Scan)
+	if err != nil {
+		response.NotFound(w, "post not found")
+		return
+	}
+	h.attachLinked(r.Context(), p)
+	response.OK(w, p)
+}
+
 type postPayload struct {
 	Title           *string  `json:"title"`
 	Slug            *string  `json:"slug"`

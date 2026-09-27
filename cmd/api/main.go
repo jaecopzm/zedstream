@@ -444,6 +444,7 @@ func main() {
 			// Blog (admin review queue)
 			r.Get("/admin/posts", blogHandler.AdminList)
 			r.Post("/admin/posts", blogHandler.CreatePost)
+			r.Post("/admin/posts/assist", blogHandler.AssistWrite)
 			r.Get("/admin/posts/{id}", blogHandler.AdminGet)
 			r.Group(func(r chi.Router) {
 				r.Use(appMiddleware.RequireValidID("id"))

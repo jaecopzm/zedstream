@@ -320,32 +320,29 @@ func (imp *Importer) importSpotifyTrack(ctx context.Context, st *SpotifyTrack, o
 	}
 
 	var trackID string
-	if isrc == "" {
-		trackID, err = imp.createTrackRecord(ctx, artistID, albumID, title, durationSec, coverURL, "", 0, "audio/mpeg", opts.GenreID, status, opts.Section, description)
-		if err != nil {
-			return err
-		}
-	} else {
-		tmpDir, err := os.MkdirTemp("", "zedstream-import-*")
-		if err != nil {
-			return fmt.Errorf("temp dir: %w", err)
-		}
-		defer os.RemoveAll(tmpDir)
+	coverImg := ""
+	if len(st.Album.Images) > 0 {
+		coverImg = st.Album.Images[0].URL
+	}
+	tmpDir, err := os.MkdirTemp("", "zedstream-import-*")
+	if err != nil {
+		return fmt.Errorf("temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
 
-		audioPath, err := downloadAudio(isrc, tmpDir)
-		if err != nil {
-			return fmt.Errorf("download audio: %w", err)
-		}
+	audioPath, err := downloadAudio(title, artistName, coverImg, st.DurationMs, tmpDir)
+	if err != nil {
+		return fmt.Errorf("download audio: %w", err)
+	}
 
-		audioKey, fileSize, mimeType, err := imp.uploadAudioToR2(ctx, audioPath, artistID, title)
-		if err != nil {
-			return fmt.Errorf("upload audio: %w", err)
-		}
+	audioKey, fileSize, mimeType, err := imp.uploadAudioToR2(ctx, audioPath, artistID, title)
+	if err != nil {
+		return fmt.Errorf("upload audio: %w", err)
+	}
 
-		trackID, err = imp.createTrackRecord(ctx, artistID, albumID, title, durationSec, coverURL, audioKey, fileSize, mimeType, opts.GenreID, status, opts.Section, description)
-		if err != nil {
-			return err
-		}
+	trackID, err = imp.createTrackRecord(ctx, artistID, albumID, title, durationSec, coverURL, audioKey, fileSize, mimeType, opts.GenreID, status, opts.Section, description)
+	if err != nil {
+		return err
 	}
 
 	// Add featured artists from Spotify data (e.g. from title feat. or extra artists)

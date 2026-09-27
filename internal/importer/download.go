@@ -6,14 +6,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
-
-const cdnBase = "https://cdn-spotify.zm.io.vn/download"
 
 var safeNameRegexp = regexp.MustCompile(`[^\w\s-]`)
 
@@ -28,34 +28,77 @@ var ipv4Client = &http.Client{
 	},
 }
 
+// downloaderClient allows long fetches: the in-house downloader resolves the
+// track, downloads and re-encodes audio server-side (up to ~12 min); typical
+// tracks complete well under this.
+var downloaderClient = &http.Client{
+	Timeout: 10 * time.Minute,
+	Transport: &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, "tcp4", addr)
+		},
+		TLSHandshakeTimeout: 10 * time.Second,
+	},
+}
+
 func safeFileName(s string) string {
 	s = safeNameRegexp.ReplaceAllString(s, "")
 	return strings.TrimSpace(s)
 }
 
-func downloadAudio(isrc, outputDir string) (string, error) {
-	if isrc == "" {
-		return "", fmt.Errorf("ISRC is required for CDN download")
+// downloaderBaseURL returns the in-house audio downloader (streamer-go) base URL.
+// Same-box default; override with DOWNLOADER_URL.
+func downloaderBaseURL() string {
+	if v := strings.TrimSpace(os.Getenv("DOWNLOADER_URL")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return "http://127.0.0.1:8081"
+}
+
+// downloadAudio fetches tagged MP3 audio for a track from the in-house
+// downloader (/api/download). It resolves "artist - title" to the best
+// duration-aware YouTube match, embeds cover art + ID3 tags, and serves
+// audio/* — the same shape the old ISRC CDN returned.
+func downloadAudio(title, artist, coverURL string, durationMs int, outputDir string) (string, error) {
+	title = strings.TrimSpace(title)
+	artist = strings.TrimSpace(artist)
+	if title == "" || artist == "" {
+		return "", fmt.Errorf("title and artist are required for audio download")
 	}
 
-	cdnURL := fmt.Sprintf("%s/isrc/%s", cdnBase, isrc)
+	q := url.Values{}
+	q.Set("q", artist+" - "+title)
+	q.Set("format", "mp3")
+	q.Set("title", title)
+	q.Set("artist", artist)
+	if strings.TrimSpace(coverURL) != "" {
+		q.Set("cover", strings.TrimSpace(coverURL))
+	}
+	if durationMs > 0 {
+		q.Set("duration_ms", strconv.Itoa(durationMs))
+	}
+	dlURL := downloaderBaseURL() + "/api/download?" + q.Encode()
 
-	req, _ := http.NewRequest("GET", cdnURL, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36")
+	req, _ := http.NewRequest("GET", dlURL, nil)
+	req.Header.Set("User-Agent", "ZedStream-Importer/1.0")
 
-	resp, err := ipv4Client.Do(req)
+	resp, err := downloaderClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("cdn request: %w", err)
+		return "", fmt.Errorf("downloader request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("cdn returned status %d", resp.StatusCode)
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		if msg := strings.TrimSpace(string(detail)); msg != "" {
+			return "", fmt.Errorf("downloader returned status %d (%s)", resp.StatusCode, msg)
+		}
+		return "", fmt.Errorf("downloader returned status %d", resp.StatusCode)
 	}
 
 	ct := resp.Header.Get("content-type")
 	if !strings.HasPrefix(ct, "audio/") {
-		return "", fmt.Errorf("cdn returned non-audio content-type: %s", ct)
+		return "", fmt.Errorf("downloader returned non-audio content-type: %s", ct)
 	}
 
 	ext := ".mp3"
@@ -70,7 +113,7 @@ func downloadAudio(isrc, outputDir string) (string, error) {
 		ext = ".m4a"
 	}
 
-	filename := fmt.Sprintf("track_%s%s", isrc, ext)
+	filename := fmt.Sprintf("%s - %s%s", safeFileName(artist), safeFileName(title), ext)
 	filePath := filepath.Join(outputDir, filename)
 	f, err := os.Create(filePath)
 	if err != nil {
