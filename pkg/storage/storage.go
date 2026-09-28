@@ -97,6 +97,16 @@ func (c *Client) GetSignedDownloadURL(ctx context.Context, bucket, key string, e
 	return req.URL, nil
 }
 
+// ObjectExists reports whether the object key exists in the bucket.
+// Any error is treated as non-existence so callers rebuild instead of failing.
+func (c *Client) ObjectExists(ctx context.Context, bucket, key string) bool {
+	_, err := c.s3.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	return err == nil
+}
+
 // DeleteFile removes an object from the specified bucket.
 func (c *Client) DeleteFile(ctx context.Context, bucket, key string) error {
 	_, err := c.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
