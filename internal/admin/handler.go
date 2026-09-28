@@ -198,8 +198,20 @@ func (h *Handler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 
 	artistID := strings.TrimSpace(r.FormValue("artist_id"))
 	if artistID == "" {
-		response.BadRequest(w, "artist_id is required")
-		return
+		// Inline artist creation, mirroring the album_title flow below:
+		// attach to the existing profile on exact name match, otherwise
+		// create a managed (unclaimed) artist the real owner can claim later.
+		artistName := strings.TrimSpace(r.FormValue("artist_name"))
+		if artistName == "" {
+			response.BadRequest(w, "artist_id is required")
+			return
+		}
+		var err error
+		artistID, err = h.musicRepo.FindOrCreateArtist(r.Context(), artistName)
+		if err != nil {
+			response.InternalServerError(w, "failed to resolve artist")
+			return
+		}
 	}
 
 	if _, err := h.artistRepo.GetByID(r.Context(), artistID, ""); err != nil {

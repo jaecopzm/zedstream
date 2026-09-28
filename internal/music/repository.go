@@ -774,10 +774,11 @@ func (r *Repository) ResolveGenre(ctx context.Context, idOrSlug string) *string 
 	return &foundID
 }
 
-// FindOrCreateArtist finds an artist by stage_name or creates one (with user).
+// FindOrCreateArtist finds an artist by stage_name (case-insensitive) or
+// creates one (with user).
 func (r *Repository) FindOrCreateArtist(ctx context.Context, name string) (string, error) {
 	var artistID string
-	err := r.db.QueryRow(ctx, `SELECT id FROM artists WHERE stage_name = $1`, name).Scan(&artistID)
+	err := r.db.QueryRow(ctx, `SELECT id FROM artists WHERE LOWER(stage_name) = LOWER($1) ORDER BY created_at ASC LIMIT 1`, name).Scan(&artistID)
 	if err == nil {
 		return artistID, nil
 	}
