@@ -152,7 +152,7 @@ func main() {
 	claimHandler := artistclaim.NewHandler(claimSvc, authSvc)
 
 	// Admin content management
-	adminHandler := admin.NewHandler(musicRepo, artistRepo, store, db, cfg.R2BucketAudio, cfg.R2BucketImages)
+	adminHandler := admin.NewHandler(musicRepo, artistRepo, store, db, searchClient, cfg.R2BucketAudio, cfg.R2BucketImages)
 
 	// Spotify importer (loads credentials from ~/projects/agent/.env or env vars)
 	homeDir, _ := os.UserHomeDir()
@@ -442,6 +442,7 @@ func main() {
 			r.Group(func(r chi.Router) {
 				r.Use(appMiddleware.RequireValidID("id"))
 				r.Patch("/admin/tracks/{id}", adminHandler.UpdateTrack)
+				r.Delete("/admin/tracks/{id}", adminHandler.DeleteTrack)
 			})
 
 			// Blog (admin review queue)

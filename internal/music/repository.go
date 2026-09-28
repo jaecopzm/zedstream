@@ -421,6 +421,19 @@ func (r *Repository) UpdateTrack(ctx context.Context, trackID string, title stri
 	return t, nil
 }
 
+// DeleteTrackByID removes a track record without artist scoping (admin use).
+func (r *Repository) DeleteTrackByID(ctx context.Context, trackID string) (string, error) {
+	var audioKey string
+	err := r.db.QueryRow(ctx,
+		`DELETE FROM tracks WHERE id = $1 RETURNING audio_key`,
+		trackID,
+	).Scan(&audioKey)
+	if err != nil {
+		return "", fmt.Errorf("delete track: %w", err)
+	}
+	return audioKey, nil
+}
+
 // DeleteTrack removes a track record.
 func (r *Repository) DeleteTrack(ctx context.Context, trackID, artistID string) (string, error) {
 	var audioKey string

@@ -15,16 +15,18 @@ import (
 	"github.com/jaecopzm/zedstream/internal/artist"
 	"github.com/jaecopzm/zedstream/internal/music"
 	"github.com/jaecopzm/zedstream/pkg/response"
+	"github.com/jaecopzm/zedstream/pkg/search"
 	"github.com/jaecopzm/zedstream/pkg/storage"
 )
 
 type Handler struct {
-	musicRepo   *music.Repository
-	artistRepo  *artist.Repository
-	storage     *storage.Client
-	audioBucket string
-	imageBucket string
-	db          *pgxpool.Pool
+	musicRepo    *music.Repository
+	artistRepo   *artist.Repository
+	storage      *storage.Client
+	searchClient *search.Client
+	audioBucket  string
+	imageBucket  string
+	db           *pgxpool.Pool
 }
 
 func NewHandler(
@@ -32,6 +34,7 @@ func NewHandler(
 	artistRepo *artist.Repository,
 	store *storage.Client,
 	db *pgxpool.Pool,
+	searchClient *search.Client,
 	audioBucket, imageBucket string,
 ) *Handler {
 	return &Handler{
@@ -39,6 +42,7 @@ func NewHandler(
 		artistRepo:   artistRepo,
 		storage:      store,
 		db:           db,
+		searchClient: searchClient,
 		audioBucket:  audioBucket,
 		imageBucket:  imageBucket,
 	}
@@ -613,6 +617,29 @@ func (h *Handler) DeleteAlbum(w http.ResponseWriter, r *http.Request) {
 	if err := h.musicRepo.DeleteAlbum(r.Context(), albumID); err != nil {
 		response.InternalServerError(w, "failed to delete album")
 		return
+	}
+
+	response.OK(w, map[string]any{"status": "deleted"})
+}
+
+// DeleteTrack removes any track by ID (admin) along with its R2 audio file.
+func (h *Handler) DeleteTrack(w http.ResponseWriter, r *http.Request) {
+	trackID := chi.URLParam(r, "id")
+	if trackID == "" {
+		response.BadRequest(w, "track id is required")
+		return
+	}
+
+	audioKey, err := h.musicRepo.DeleteTrackByID(r.Context(), trackID)
+	if err != nil {
+		response.NotFound(w, "track not found")
+		return
+	}
+
+	// Best-effort cleanup: audio file + search index.
+	_ = h.storage.DeleteFile(r.Context(), h.audioBucket, audioKey)
+	if h.searchClient != nil {
+		_ = h.searchClient.DeleteTrack(r.Context(), trackID)
 	}
 
 	response.OK(w, map[string]any{"status": "deleted"})
