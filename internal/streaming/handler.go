@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -14,6 +16,35 @@ import (
 )
 
 const signedURLExpiry = 2 * time.Hour
+
+// sanitizeFilename strips characters that are illegal in file names or
+// would break the Content-Disposition header value.
+func sanitizeFilename(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "track"
+	}
+	if len(s) > 120 {
+		s = s[:120]
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '"', '\\', '/', ':', '*', '?', '<', '>', '|':
+			b.WriteRune('-')
+		default:
+			if r < 32 || r == 127 {
+				continue
+			}
+			b.WriteRune(r)
+		}
+	}
+	out := strings.TrimSpace(b.String())
+	if out == "" {
+		return "track"
+	}
+	return out
+}
 
 // Handler handles music streaming endpoints.
 type Handler struct {
@@ -39,10 +70,11 @@ func (h *Handler) StreamTrack(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromContext(r.Context())
 
 	// Fetch track audio key and verify it's published
-	var audioKey, status string
+	var audioKey, status, title, artistName string
 	err := h.db.QueryRow(r.Context(),
-		`SELECT audio_key, status FROM tracks WHERE id = $1`, trackID,
-	).Scan(&audioKey, &status)
+		`SELECT t.audio_key, t.status, t.title, COALESCE(a.stage_name, 'Unknown Artist')
+		 FROM tracks t LEFT JOIN artists a ON a.id = t.artist_id WHERE t.id = $1`, trackID,
+	).Scan(&audioKey, &status, &title, &artistName)
 	if err != nil {
 		response.NotFound(w, "track not found")
 		return
@@ -50,6 +82,28 @@ func (h *Handler) StreamTrack(w http.ResponseWriter, r *http.Request) {
 
 	if status != "published" {
 		response.NotFound(w, "track is not available")
+		return
+	}
+
+	// Download mode (?download=1) returns a signed URL that forces a file
+	// download with a proper filename. The plain stream URL cannot be used
+	// for downloads: browsers fetch it cross-origin (CORS) and ignore the
+	// anchor download attribute, so it would play inline instead of saving.
+	if r.URL.Query().Get("download") == "1" {
+		ext := path.Ext(audioKey)
+		if ext == "" {
+			ext = ".mp3"
+		}
+		filename := sanitizeFilename(artistName+" - "+title) + ext
+		downloadURL, err := h.storage.GetSignedDownloadURL(r.Context(), h.audioBucket, audioKey, signedURLExpiry, filename)
+		if err != nil {
+			response.InternalServerError(w, "failed to generate download URL")
+			return
+		}
+		response.OK(w, map[string]any{
+			"url":        downloadURL,
+			"expires_in": int(signedURLExpiry.Seconds()),
+		})
 		return
 	}
 

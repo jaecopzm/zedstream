@@ -82,6 +82,21 @@ func (c *Client) GetSignedURL(ctx context.Context, bucket, key string, expiry ti
 	return req.URL, nil
 }
 
+// GetSignedDownloadURL generates a pre-signed GET URL that forces the
+// browser to download the object with the given filename instead of
+// playing it inline.
+func (c *Client) GetSignedDownloadURL(ctx context.Context, bucket, key string, expiry time.Duration, filename string) (string, error) {
+	req, err := c.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket:                     aws.String(bucket),
+		Key:                        aws.String(key),
+		ResponseContentDisposition: aws.String(fmt.Sprintf(`attachment; filename="%s"`, filename)),
+	}, s3.WithPresignExpires(expiry))
+	if err != nil {
+		return "", fmt.Errorf("presign download object: %w", err)
+	}
+	return req.URL, nil
+}
+
 // DeleteFile removes an object from the specified bucket.
 func (c *Client) DeleteFile(ctx context.Context, bucket, key string) error {
 	_, err := c.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
