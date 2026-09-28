@@ -294,9 +294,19 @@ func (h *Handler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpFile.Close()
 
-	// Auto-detect duration if not provided
+	// Auto-detect duration if not provided. A file ffprobe cannot read
+	// (empty, truncated, corrupt) is rejected — it would otherwise become
+	// a listing that shows everything but can never play.
 	durationSec, _ := strconv.Atoi(r.FormValue("duration_sec"))
-	if durationSec <= 0 {
+	if probedSec, ok := music.ProbeAudioDuration(tmpPath); ok {
+		if probedSec <= 0 {
+			response.BadRequest(w, "audio file is empty or corrupt and cannot be played")
+			return
+		}
+		if durationSec <= 0 {
+			durationSec = probedSec
+		}
+	} else if durationSec <= 0 {
 		durationSec = music.DetectDuration(tmpPath)
 	}
 
@@ -643,6 +653,99 @@ func (h *Handler) DeleteTrack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.OK(w, map[string]any{"status": "deleted"})
+}
+
+// ReplaceTrackAudio swaps a track's audio file (admin repair) while keeping
+// the same track ID, so existing links keep working. Cached download embeds
+// for the track are cleared so they rebuild from the new file.
+func (h *Handler) ReplaceTrackAudio(w http.ResponseWriter, r *http.Request) {
+	trackID := chi.URLParam(r, "id")
+	if trackID == "" {
+		response.BadRequest(w, "track id is required")
+		return
+	}
+
+	track, err := h.musicRepo.GetTrackByID(r.Context(), trackID)
+	if err != nil {
+		response.NotFound(w, "track not found")
+		return
+	}
+
+	const maxSize = 55 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
+		response.BadRequest(w, "request too large or invalid multipart form")
+		return
+	}
+
+	audioFile, audioHeader, err := r.FormFile("audio")
+	if err != nil {
+		response.BadRequest(w, "audio file is required")
+		return
+	}
+	defer audioFile.Close()
+
+	contentType := audioHeader.Header.Get("Content-Type")
+	allowedAudioTypes := map[string]bool{
+		"audio/mpeg": true, "audio/flac": true,
+		"audio/wav": true, "audio/ogg": true, "audio/mp4": true,
+	}
+	if !allowedAudioTypes[contentType] {
+		response.BadRequest(w, "unsupported audio format. Use MP3, FLAC, WAV, OGG, or M4A")
+		return
+	}
+
+	tmpDir, err := os.MkdirTemp("", "zedstream-admin-replace-*")
+	if err != nil {
+		response.InternalServerError(w, "failed to process audio")
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tmpPath := filepath.Join(tmpDir, audioHeader.Filename)
+	tmpFile, err := os.Create(tmpPath)
+	if err != nil {
+		response.InternalServerError(w, "failed to process audio")
+		return
+	}
+	if _, err := io.Copy(tmpFile, audioFile); err != nil {
+		tmpFile.Close()
+		response.InternalServerError(w, "failed to process audio")
+		return
+	}
+	tmpFile.Close()
+
+	durationSec := track.DurationSec
+	if probedSec, ok := music.ProbeAudioDuration(tmpPath); ok {
+		if probedSec <= 0 {
+			response.BadRequest(w, "audio file is empty or corrupt and cannot be played")
+			return
+		}
+		durationSec = probedSec
+	}
+
+	audioKey := fmt.Sprintf("tracks/%s/%s", track.ArtistID, audioHeader.Filename)
+	uploadFile, err := os.Open(tmpPath)
+	if err != nil {
+		response.InternalServerError(w, "failed to upload audio")
+		return
+	}
+	defer uploadFile.Close()
+
+	if err := h.storage.UploadFile(r.Context(), h.audioBucket, audioKey, contentType, uploadFile); err != nil {
+		response.InternalServerError(w, "failed to upload audio")
+		return
+	}
+
+	if err := h.musicRepo.UpdateTrackAudio(r.Context(), trackID, audioKey, audioHeader.Size, contentType, durationSec); err != nil {
+		response.InternalServerError(w, "failed to save track audio")
+		return
+	}
+
+	// Drop cached download embeds so they rebuild from the new file.
+	_, _ = h.storage.DeletePrefix(r.Context(), h.audioBucket, "embeds/"+trackID+"/")
+
+	response.OK(w, map[string]any{"status": "updated", "audio_key": audioKey, "duration_sec": durationSec})
 }
 
 func extensionFromMime(mime string) string {

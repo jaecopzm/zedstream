@@ -443,6 +443,7 @@ func main() {
 				r.Use(appMiddleware.RequireValidID("id"))
 				r.Patch("/admin/tracks/{id}", adminHandler.UpdateTrack)
 				r.Delete("/admin/tracks/{id}", adminHandler.DeleteTrack)
+				r.Post("/admin/tracks/{id}/audio", adminHandler.ReplaceTrackAudio)
 			})
 
 			// Blog (admin review queue)

@@ -392,6 +392,20 @@ func (r *Repository) SearchTracks(ctx context.Context, query string, limit, offs
 	return tracks, nil
 }
 
+// UpdateTrackAudio swaps a track's audio file reference (admin repair/replace).
+func (r *Repository) UpdateTrackAudio(ctx context.Context, trackID, audioKey string, fileSize int64, mimeType string, durationSec int) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE tracks
+		 SET audio_key = $2, file_size = $3, mime_type = $4, duration_sec = $5, updated_at = NOW()
+		 WHERE id = $1`,
+		trackID, audioKey, fileSize, mimeType, durationSec,
+	)
+	if err != nil {
+		return fmt.Errorf("update track audio: %w", err)
+	}
+	return nil
+}
+
 // UpdateTrack updates mutable track fields.
 func (r *Repository) UpdateTrack(ctx context.Context, trackID string, title string, genreID *string, status string, coverURL *string, description *string) (*Track, error) {
 	t := &Track{}
@@ -838,6 +852,20 @@ func (r *Repository) FindOrCreateArtist(ctx context.Context, name string) (strin
 
 // DetectDuration reads duration (seconds) from an audio file using ffprobe.
 func DetectDuration(filePath string) int {
+	sec, _ := ProbeAudioDuration(filePath)
+	return sec
+}
+
+// ProbeAudioDuration probes an audio file with ffprobe and reports its
+// playable duration. It returns (0, true) when ffprobe runs but finds no
+// decodable audio (empty, truncated, or corrupt file) — uploads should be
+// rejected in that case. It returns (0, false) when ffprobe itself is
+// unavailable, in which case callers should skip validation rather than
+// block every upload.
+func ProbeAudioDuration(filePath string) (int, bool) {
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		return 0, false
+	}
 	out, err := exec.Command("ffprobe",
 		"-v", "quiet",
 		"-of", "csv=p=0",
@@ -845,13 +873,13 @@ func DetectDuration(filePath string) int {
 		filePath,
 	).Output()
 	if err != nil {
-		return 0
+		return 0, true
 	}
 	sec, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
 	if err != nil {
-		return 0
+		return 0, true
 	}
-	return int(sec)
+	return int(sec), true
 }
 
 // scanTracks is a helper to scan multiple track rows.

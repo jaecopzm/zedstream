@@ -10,6 +10,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // Client wraps the S3-compatible R2 client.
@@ -105,6 +106,34 @@ func (c *Client) ObjectExists(ctx context.Context, bucket, key string) bool {
 		Key:    aws.String(key),
 	})
 	return err == nil
+}
+
+// DeletePrefix removes all objects under the given key prefix (single page,
+// up to 1000 keys) and reports how many were deleted.
+func (c *Client) DeletePrefix(ctx context.Context, bucket, prefix string) (int, error) {
+	list, err := c.s3.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket:  aws.String(bucket),
+		Prefix:  aws.String(prefix),
+		MaxKeys: aws.Int32(1000),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("list objects for delete: %w", err)
+	}
+	if len(list.Contents) == 0 {
+		return 0, nil
+	}
+	ids := make([]types.ObjectIdentifier, 0, len(list.Contents))
+	for _, o := range list.Contents {
+		ids = append(ids, types.ObjectIdentifier{Key: o.Key})
+	}
+	_, err = c.s3.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+		Bucket: aws.String(bucket),
+		Delete: &types.Delete{Objects: ids},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("delete objects: %w", err)
+	}
+	return len(ids), nil
 }
 
 // DeleteFile removes an object from the specified bucket.
