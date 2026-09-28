@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -74,6 +75,7 @@ func (h *Handler) downloadURL(ctx context.Context, trackID, audioKey, title, art
 	key := fmt.Sprintf("embeds/%s/%x%s", trackID, sum, ext)
 	if !h.storage.ObjectExists(ctx, h.audioBucket, key) {
 		if err := h.buildEmbeddedCopy(ctx, audioKey, cover, key, ext); err != nil {
+			slog.Warn("embedded download build failed, falling back to original", "track_id", trackID, "err", err)
 			return h.storage.GetSignedDownloadURL(ctx, h.audioBucket, audioKey, signedURLExpiry, filename)
 		}
 	}
