@@ -210,10 +210,20 @@ func (h *Handler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpFile.Close()
 
-	// Auto-detect duration if not provided
+	// Auto-detect duration if not provided. A file ffprobe cannot read
+	// (empty, truncated, corrupt) is rejected — it would otherwise become
+	// a listing that shows everything but can never play.
 	durationStr := r.FormValue("duration_sec")
 	durationSec, _ := strconv.Atoi(durationStr)
-	if durationSec <= 0 {
+	if probedSec, ok := ProbeAudioDuration(tmpPath); ok {
+		if probedSec <= 0 {
+			response.BadRequest(w, "audio file is empty or corrupt and cannot be played")
+			return
+		}
+		if durationSec <= 0 {
+			durationSec = probedSec
+		}
+	} else if durationSec <= 0 {
 		durationSec = DetectDuration(tmpPath)
 	}
 
